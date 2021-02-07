@@ -24,6 +24,7 @@ ensureFile(process.env.GUILDS_FILE, {})
 
 let wallets = JSON.parse(fs.readFileSync(process.env.WALLETS_FILE))
 let guilds = JSON.parse(fs.readFileSync(process.env.GUILDS_FILE))
+let perlins = {}
 let minings = {}
 
 // TEMP
@@ -32,6 +33,17 @@ const minDuration = 100
 const maxDuration = 600
 const chartWidth = 25
 const chartHeight = 10
+
+const updateMarket = () => {
+    Object.keys(guilds).forEach(guild => {
+        if(!perlins[guild]) perlins[guild] = perlin.make(guilds[guild].seed)
+        if(!guilds[guild].market) guilds[guild].market = []
+        guilds[guild].market.push(Math.pow(perlins[guild].noise(guilds[guild].market.length / 10), 2)
+            * (perlins[guild].noise((guilds[guild].market.length * 10 + guilds[guild].market.length)) * 10)
+        )
+        // LIMIT TO CHARTWIDTH
+    });
+}
 
 const doMining = () => {
     const now = Date.now();
@@ -63,12 +75,12 @@ const saveFile = (file, value) => {
         (err, data) => {})
 }
 
-setInterval(doMining, 3000)
-setInterval(saveFile, 10000, process.env.WALLETS_FILE, wallets)
-setInterval(saveFile, 120000, process.env.GUILDS_FILE, guilds)
+const getStockMin = value => Math.pow(((value * 321654987 ^ 654321987) % 10000 / 10000) * 2, 2) / 2
+const getStockMax = value => Math.pow(((value * 789456123 ^ 987654321) % 10000 / 10000) * 2, 2) / 2
 
 const setupGuild = (guild) => {
     guilds[guild] = {
+        seed: Math.random() * 541321489,
         currencies: {
             'blue': {
                 emoji: '<:blue:807413114827309146>',
@@ -82,14 +94,11 @@ const setupGuild = (guild) => {
     }
 }
 
-const p = perlin.make();
-const q = perlin.make();
-for(let i = 0; i < 1000; i++) {
-    let str = ''
-    for(let j = Math.pow(p.noise(i / 10) * 10, 1.2) * p.noise(i / 10000) * 10; j >= 0; j--)
-        str += j - 1 < 0 ? '⚫' : ' '
-    console.log(str)
-}
+setInterval(doMining, 3000)
+setInterval(updateMarket, 1000)
+setInterval(saveFile, 10000, process.env.WALLETS_FILE, wallets)
+setInterval(saveFile, 120000, process.env.GUILDS_FILE, guilds)
+
 
 client.on('guildCreate', guild => setupGuild(guild.id))
 client.on('guildDelete', guild => delete guilds[guild.id])
@@ -99,7 +108,7 @@ client.on("message", message => {
     const args = text.split(/ +/)
     const authorRef = `<@${message.author.id}>: `
 
-    switch(args[0]) {
+    switch(args[0].toLowerCase()) {
         case 'mine':
             if(message.channel.type === 'dm'){
                 message.channel.send('⛏️ Você não pode minerar aqui. Execute este comando no servidor que deseja minerar.')
@@ -142,7 +151,7 @@ client.on("message", message => {
                 if(!wallets[message.author.id])
                     message.channel.send('💰 Você ainda não tem saldo. Minere ou compre moedas em algum servidor para adicionar saldo à sua carteira.')
                 // TODO
-                else message.channel.send('💰 Suas carteira')
+                else message.channel.send('💰')
             else {
                 if(!guilds[message.guild.id]) setupGuild(message.guild.id)
                 let wallet = ''
@@ -154,6 +163,27 @@ client.on("message", message => {
                         + `**${value.toFixed(4)}** `
                 })
                 message.channel.send(authorRef + wallet)
+            }
+            break
+        case 'stocks':
+            if(message.channel.type === 'dm')    
+               message.channel.send('📈 Execute este comando em algum servidor para ver a economia local.')
+            else {
+                if(!guilds[message.guild.id]) setupGuild(message.guild.id)
+                if(!guilds[message.guild.id].market) guilds[message.guild.id].market = []
+                let chart = ''
+                const market = guilds[message.guild.id].market.filter((_, i) => i >= guilds[message.guild.id].market.length - chartWidth)
+                const chartMax = Math.max(...market.map(value => value + getStockMax(value) / 5))
+                const chartMin = Math.min(...market.map(value => value - getStockMin(value) / 5))
+                for(let i = chartHeight; i >= 0; i--) {
+                    for(let j = 0; j < chartWidth; j++) {
+                        chart += market[j] - chartMin + (getStockMax(market[j]) / 5) > (i - 1) * (chartMax - chartMin) / chartHeight
+                            && market[j] - chartMin - (getStockMin(market[j]) / 5) < (i + 1) * (chartMax - chartMin) / chartHeight
+                            ? (!j || market[j] > market[j - 1] ? '🟩' : '🟥') : '⬛'
+                    }
+                    chart += '\n'
+                }
+                message.channel.send(`\`\`\`\n${chart}\`\`\``)
             }
             break
     }
