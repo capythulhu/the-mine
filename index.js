@@ -121,7 +121,7 @@ setInterval(saveFile, guildSavingInterval, process.env.GUILDS_FILE, guilds)
 
 client.on('guildCreate', guild => setupGuild(guild.id))
 client.on('guildDelete', guild => delete guilds[guild.id])
-client.on('message', message => {  
+client.on('message', async message => {  
     if(!message.content.startsWith(process.env.PREFIX) || message.author.bot) return;
     const text = message.content.slice(String(process.env.PREFIX).length)
     const args = text.split(/ +/)
@@ -136,9 +136,9 @@ client.on('message', message => {
             if(!guilds[message.guild.id]) setupGuild(message.guild.id)
             if(checkNested(minings, message.author.id, message.guild.id)) {
                 const mining = minings[message.author.id][message.guild.id];
-                    const miningCurrencyEmoji = guilds[message.guild.id].currencies[mining.currency].emoji
-                    message.channel.send(authorRef + `⛏️ Você está minerando ${miningCurrencyEmoji} há ${((Date.now() - mining.start) / 3600000).toFixed(2)} horas. Para cancelar, digite \`\`${process.env.PREFIX}stop\`\`.`) 
-            } else if(args[1] && guilds[message.guild.id].currencies[args[1].toLowerCase()]) {
+                const miningCurrencyEmoji = guilds[message.guild.id].currencies[mining.currency].emoji
+                message.channel.send(authorRef + `⛏️ Você está minerando ${miningCurrencyEmoji} há ${((Date.now() - mining.start) / 3600000).toFixed(2)} horas. Para cancelar, digite \`\`${process.env.PREFIX}stop\`\`.`) 
+            } else if(args.length >= 2 && guilds[message.guild.id].currencies[args[1].toLowerCase()]) {
                 minings[message.author.id] = {
                     ...minings[message.author.id],
                     [message.guild.id]: {
@@ -220,7 +220,7 @@ client.on('message', message => {
                     }
                     const firstCurrencyEmoji = guilds[message.guild.id].currencies[firstCurrency].emoji
                     const secondCurrencyEmoji = guilds[message.guild.id].currencies[secondCurrency].emoji
-                    message.channel.send(authorRef + `📈 Valor de ${firstCurrencyEmoji}**1** = ${secondCurrencyEmoji}**${finalRecords[finalRecords.length - 1]}**\n\`\`\`${chart}\`\`\`Próxima atualização em ${(lastMarketUpdate + marketUpdateInterval - Date.now()) / 1000} segundos.`)
+                    message.channel.send(authorRef + `📈 Valor de ${firstCurrencyEmoji}**1** = ${secondCurrencyEmoji}**${finalRecords[finalRecords.length - 1]}**\n\`\`\`${chart}\`\`\`Próxima atualização em ${((lastMarketUpdate + marketUpdateInterval - Date.now()) / 1000).toFixed(0)} segundos.`)
                 } else message.channel.send(authorRef + `📈 Há argumentos faltando. Digite \`\`${process.env.PREFIX}stocks [moeda primária] [moeda secundária]\`\`.`)
             }
             break
@@ -231,20 +231,24 @@ client.on('message', message => {
                 if(!guilds[message.guild.id]) setupGuild(message.guild.id)
                 const sellingCurrency = args[2].toLowerCase()
                 const buyingCurrency = args[3].toLowerCase()
-                if(guilds[message.guild.id].currencies[sellingCurrency].ticks <= 0
-                    || guilds[message.guild.id].currencies[buyingCurrency].ticks <= 0)
-                    updateGuildMarket(message.guild.id)
                 if(!guilds[message.guild.id].currencies[sellingCurrency]
                     || !guilds[message.guild.id].currencies[buyingCurrency]) {
                     message.channel.send(authorRef + '💳 Moeda(s) desconhecida(s).')
-                    break;
+                    break
                 }
+                if(guilds[message.guild.id].currencies[sellingCurrency].ticks <= 0
+                    || guilds[message.guild.id].currencies[buyingCurrency].ticks <= 0)
+                    updateGuildMarket(message.guild.id)
                 const sellingCurrencyRecord = guilds[message.guild.id].currencies[sellingCurrency].records[guilds[message.guild.id].currencies[sellingCurrency].records.length - 1]
                 const buyingCurrencyRecord = guilds[message.guild.id].currencies[buyingCurrency].records[guilds[message.guild.id].currencies[buyingCurrency].records.length - 1]
                 const sellingCurrencyEmoji = guilds[message.guild.id].currencies[sellingCurrency].emoji
                 const buyingCurrencyEmoji = guilds[message.guild.id].currencies[buyingCurrency].emoji
-                if(wallets[message.author.id][message.guild.id][sellingCurrency] < args[1])
-                    message.channel.send(authorRef + `💳 Saldo insuficiente. Disponível: ${sellingCurrencyEmoji}**${wallets[message.author.id][message.guild.id][sellingCurrency].toFixed(4)}**.`)
+                if(args[1] <= 0) message.channel.send(authorRef + '💳 Saldo inválido.')
+                else if(!checkNested(wallets, message.author.id, message.guild.id, sellingCurrency)
+                    || wallets[message.author.id][message.guild.id][sellingCurrency] < args[1])
+                    message.channel.send(authorRef + `💳 Saldo insuficiente. Disponível: ${sellingCurrencyEmoji}**${
+                        !checkNested(wallets, message.author.id, message.guild.id, sellingCurrency) ? 0 : wallets[message.author.id][message.guild.id][sellingCurrency].toFixed(4)
+                    }**.`)
                 else {
                     const sellingRoundedCurrency = Math.round(args[1] * 100000) / 100000
                     const convertedCurrency = Math.round(sellingCurrencyRecord / buyingCurrencyRecord * args[1] * 100000) / 100000
@@ -255,6 +259,35 @@ client.on('message', message => {
                     message.channel.send(authorRef + `\n💳 Transação realizada:\n**-${sellingCurrencyEmoji}${sellingRoundedCurrency}\n+${buyingCurrencyEmoji}${convertedCurrency}**`)
                 }
             } else message.channel.send(authorRef + `💳 Há argumentos faltando. Digite \`\`${process.env.PREFIX}trade [quantidade] [moeda a ser vendida] [moeda a ser comprada]\`\`.`)
+            break
+        case 'ranking':
+            if(message.channel.type === 'dm'){
+                message.channel.send('💎 Execute este comando em algum servidor para ver o ranking.')
+                break
+            }
+            if(!guilds[message.guild.id]) setupGuild(message.guild.id)
+            const currency = args[1] && args[1].toLowerCase()
+            if(args.length >= 2 && guilds[message.guild.id].currencies[currency]) {
+                let ranking = []
+                Object.keys(wallets).forEach(wallet =>
+                    Object.keys(wallets[wallet]).forEach(guild => {
+                        if(guild === message.guild.id && wallets[wallet][guild][currency])
+                            ranking.push({'id': wallet, 'wallet': wallets[wallet][guild]})
+                    })
+                )
+                ranking = ranking.splice(ranking.length - 10, 10)
+                ranking.sort((a, b) => a.wallet[currency] - b.wallet[currency]).reverse()
+                await Promise.all(ranking.map(async user =>
+                    user.username = (await client.users.fetch(user.id)).username))
+
+                const currencyEmoji = guilds[message.guild.id].currencies[currency].emoji
+                let rank = ''
+                ranking.forEach((wallet, i) => 
+                    rank += `**${i + 1}º** ${wallet.username} ${currencyEmoji}${wallet.wallet[currency].toFixed(4)}\n`)
+                
+                message.channel.send(authorRef + '\n💎 Usuários mais ricos do servidor:\n' + rank)
+            } else if(!args[1]) message.channel.send(authorRef + '💎 Insira o nome da moeda a ser ranqueada.')
+            else message.channel.send(authorRef + '💎 Moeda desconhecida.')
             break
     }
 });
