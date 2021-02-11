@@ -52,7 +52,7 @@ const updateGuildMarket = guild => {
         guilds[guild].currencies[currency].ticks += 1
         if(guilds[guild].currencies[currency].records.length > chartWidth)
         guilds[guild].currencies[currency].records = guilds[guild].currencies[currency].records
-            .splice(guilds[guild].currencies[currency].records.length - chartWidth, chartWidth);
+            .splice(Math.max(guilds[guild].currencies[currency].records.length - chartWidth, 0), chartWidth);
     })
 }
 
@@ -275,8 +275,8 @@ client.on('message', async message => {
                             ranking.push({'id': wallet, 'wallet': wallets[wallet][guild]})
                     })
                 )
-                ranking = ranking.splice(ranking.length - 10, 10)
                 ranking.sort((a, b) => a.wallet[currency] - b.wallet[currency]).reverse()
+                ranking = ranking.splice(Math.max(ranking.length - 10, 0), 10)
                 await Promise.all(ranking.map(async user =>
                     user.username = (await client.users.fetch(user.id)).username))
 
